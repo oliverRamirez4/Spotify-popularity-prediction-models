@@ -1,0 +1,303 @@
+1---
+title: "Statistics with Spotify: Predicting Song Popularity within the Hip-Hop Genre"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+### Oliver Ramirez
+### Colorado College
+### MA237 Statistical Methods
+### 11/15/2023
+
+# Introduction
+Music is an integral part of the human experience and has a deep and rich history. In this paper I evaluate the impact of several variables (e.g. energy) on a songs popularity within the hip-hop genre and attempt to fit statistical models that predict the popularity of a song. <br><br>
+
+Spotify has an API that allows developers to access an in depth collection of data about music artists, albums, and tracks. Using the data on tracks I intend to fit statistical models that predict the popularity of tracks and allow me to analyze what variables have the most significant impact on a songs popularity. <br><br>
+
+### Seting up the Spotify API for Data Retrieval
+```{r}
+library(devtools)
+library(spotifyr)
+
+Sys.setenv(SPOTIFY_CLIENT_ID = 'da2cae6ce9a04209a2c3060e6c35b37b')
+
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'a49cc1921a5b41a0adc6a5ecce92bcdf')
+
+
+auth_code <- get_spotify_authorization_code(scope = c('ugc-image-upload', 'user-read-playback-state', 'user-modify-playback-state', 'user-read-currently-playing','app-remote-control','streaming', 'playlist-read-private', 'playlist-read-collaborative', 'playlist-modify-private', 'playlist-modify-public', 'user-follow-modify', 'user-follow-read', 'user-read-playback-position', 'user-top-read', 'user-read-recently-played', 'user-library-modify', 'user-library-read', 'user-read-email', 'user-read-private'))
+```
+
+The audio features that the data set contains are as follows: <br>
+
+#### Acousticness (float)
+A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
+
+#### danceability (float)
+Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.
+
+#### energy (float)
+Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
+
+#### instrumentalness (float)
+Predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.
+
+#### key (integer)
+The key the track is in. Integers map to pitches using standard Pitch Class notation. E.g. 0 = C, 1 = C♯/D♭, 2 = D, and so on. If no key was detected, the value is -1.
+
+#### liveness (float)
+Detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. A value above 0.8 provides strong likelihood that the track is live.
+
+#### loudness
+
+The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Loudness is the quality of a sound that is the primary psychological correlate of physical strength (amplitude). Values typically range between -60 and 0 db.
+
+#### mode
+Mode indicates the modality (major or minor) of a track, the type of scale from which its melodic content is derived. Major is represented by 1 and minor is 0.
+
+#### speechiness
+Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks.
+
+#### tempo
+The overall estimated tempo of a track in beats per minute (BPM). In musical terminology, tempo is the speed or pace of a given piece and derives directly from the average beat duration.
+
+#### valence
+A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+
+
+## Selecting a Data Set
+There is a massive variety of songs that can be used to train these models. Songs within different genres have characteristics specific to that genre that listeners enjoy. It would be extremely difficult to predict the popularity of a country song with a model that was trained with songs spanning across all different genres. To eliminate extraneous variables, it is more effective to fit a model that predicts the popularity of a song within a specific genre. Spotify has over 5000 genres so for this model we will predict popularity of songs within the hip hop genre. The API also does not make it easy to get a random data set. You can not search all the songs within a specific data set as there are too many songs and it would make it very inefficient. The only way to get a list of tracks is to get tracks from an artist or tracks from a playlist. You can also search for tracks that fit a specific search category, however the api will only return 50 results. The solution that I decided to use was to find a very large playlist made about a specific genre and use this as my data set.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+plistx <-get_playlist_audio_features('oliverRamirez', '3vsdCLTKxZHlAouZhvi8Kg') |>
+  select(danceability,energy,key,loudness,mode, speechiness, acousticness, instrumentalness, liveness, valence, tempo, track.duration_ms, track.popularity, track.name) |>
+  mutate(key = factor(key), mode = factor(mode))
+```
+The distribution of track popularity had a large number of points at track popularity = 0. I looked back at the titles of some of the songs that had a popularity score of 0 and recognized them as very popular songs. The songs with 0 popularity were not scored correctly so I needed to remove them from the data set.
+```{r}
+plist <- plistx |>
+  filter(track.popularity != 0)
+```
+
+```{r}
+nrow(plist)
+```
+There are 1276 songs in the data set
+
+
+```{r}
+plist |>
+  ggplot(mapping = aes(x = track.popularity))+
+  geom_histogram(color = "white", alpha = 0.5) +
+  labs(title = "Histogram of Track Popularity",
+       subtitle = "Within Hip-Hop Playlist of 1276 Songs",
+       x= "Popularity Score (0-100)")
+
+plist |>
+  ggplot(aes(x = track.popularity)) +
+  geom_boxplot( alpha = 0.5) +
+  labs(title = "Boxplot for Track Popularity",
+       subtitle = "Within Hip-Hop Playlist of 1276 Songs",
+       x= "Popularity Score (0-100)")
+```
+<br>
+Popularity Score was normally distributed across different ratings with some outliers at points lower than track.popularity = 24. <br> <br>
+
+
+```{r}
+plist |>
+  pivot_longer(c(danceability,energy,loudness, speechiness, acousticness, instrumentalness, liveness, valence, tempo, track.duration_ms, track.popularity),
+               names_to = "variable", values_to = "value") |>
+  group_by(variable) |>
+  summarise( min = min(value), max = max(value),mean = mean(value), sd = sd(value))
+
+```
+
+# Preparing the Data
+
+Break the data into 75% training data and 25% testing data.
+```{r}
+set.seed(237)
+dat <-plist |>
+  select(-track.name)
+
+indexes <- sample(1:nrow(dat), round(nrow(dat) * 0.75))
+
+train_data <-dat[indexes,]
+
+test_data <- dat[-indexes,]
+
+```
+
+Normalize all numeric variables, dummy all predictor variables, and omit rows with NA. Prepare matrices to use in ridge and LASSO regression.
+```{r}
+library(ISLR2)
+library(tidymodels)
+
+rec <- recipe(track.popularity ~ . , data = train_data) |>
+  step_normalize(all_predictors(), - all_nominal()) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors()) |>
+  step_naomit() |>
+  prep()
+
+train_data2 <- bake(rec, new_data = NULL)
+test_data2 <- bake(rec, new_data = test_data)
+
+x <- train_data2 |>
+  select(-track.popularity) |>
+  as.matrix()
+y <-train_data2 |>
+  select(track.popularity) |> 
+  as.matrix()
+x_test <- test_data2 |>
+  select(-track.popularity) |>
+  as.matrix()
+```
+# Fitting the Models
+
+I will set up 5 different models to predict a songs popularity and compare their performance using 5-fold cross validation. The 5 models will be 3 glm models using gaussian(link = "identity"), gaussian(link = "log"), gamma(link = "log"), a ridge model, and a LASSO model.
+
+
+#### 3 Generalized Linear Models
+```{r}
+m_gaus_identity <- glm(track.popularity ~ .,
+          family = gaussian(link = "identity"),
+          data = train_data2
+          )
+m_gaus_log <- glm(track.popularity ~ .,
+          family = gaussian(link = "log"),
+          data = train_data2
+          )
+
+m_gamma_log <-glm(track.popularity ~ .,
+          family = Gamma(link = "log"),
+          data = train_data2
+          )
+```
+
+Use backward selection to select the predictors for track popularity
+```{r, echo = T, results = 'hide'}
+m_gaus_identity <- stats::step(m_gaus_identity, direction = "backward")
+
+m_gaus_log <- stats::step(m_gaus_log, direction = "backward")
+
+m_gamma_log <- stats::step(m_gamma_log, direction = "backward")
+
+```
+Using backwards selection, all of the glm selected the same variables as predictors. Here is the variables that were selected.<br> <br>
+
+track.popularity ~ danceability + energy + loudness + speechiness + 
+    instrumentalness + liveness + track.duration_ms + key_X1 + 
+    key_X10
+```{r}
+tidy(m_gaus_identity)
+```
+```{r}
+plot(m_gaus_identity)
+```
+Based on the Diagnostics plots, the model meets the conditions for inference.
+```{r}
+tidy(m_gaus_log)
+```
+
+```{r}
+tidy(m_gamma_log)
+```
+
+### Ridge Regresion Model
+```{r}
+library(glmnet)
+grid <- 10^seq(10, -2, length = 100)
+
+cvridge <- cv.glmnet(x, y, alpha = 0, nfolds = 5, type.measure = "mae")
+
+cvridge$lambda.min # lambda that gives the smallest cross-validation MSE
+```
+The optimal lambda value is 5.693085 for a ridge regression model. <br>
+optim_ridge is the ridge regression model fitted with the optimal lambda value.
+```{r}
+optim_ridge <- glmnet(x, y, alpha = 0, lambda = cvridge$lambda.min)
+```
+
+```{r}
+tidy(optim_ridge)
+```
+
+### LASSO Regression Model
+```{r}
+cvLASSO <- cv.glmnet(x, y, alpha = 1, nfolds = 5, type.measure = "mae")
+
+cvLASSO$lambda.min
+```
+The optimal lambda value for the LASSO model is 0.2833462. <br>
+
+optim_lasso is the model with the optimal lambda value.
+```{r}
+optim_lasso <- glmnet(x, y, alpha = 1, lambda = cvLASSO$lambda.min)
+```
+
+# Selecting the Best Model for Predicting Track Popularity
+I used mean absolute error to select the best model for predicting track 
+### Test Mean Absolute Error for Generalized Linear Model with 'family = gausian(link = "identity")'
+```{r}
+pred <- predict(m_gaus_identity, test_data2, type = "response")
+mean(abs(test_data2$track.popularity - pred), na.rm = T)
+```
+### Test Mean Absolute Error for Generalized Linear Model with 'family = gaussian(link = "log")'
+```{r}
+pred <- predict(m_gaus_log, test_data2, type = "response")
+mean(abs(test_data2$track.popularity - pred), na.rm = T)
+```
+### Test Mean Absolute Error for Generalized Linear Model with 'family = gamma(link = "log")'
+```{r}
+pred <- predict(m_gamma_log, test_data2, type = "response")
+mean(abs(test_data2$track.popularity - pred), na.rm = T)
+```
+### Test Mean Absolute Error for Ridge Regression Model
+```{r}
+pred <- predict(optim_ridge, x_test, type = "response")
+mean(abs(test_data2$track.popularity - pred))
+```
+### Test Mean Absolute Error for LASSO Regression model
+```{r}
+pred <- predict(optim_lasso, x_test, type = "response")
+mean(abs(test_data2$track.popularity - pred))
+```
+### Mean Absolute Error of the Model that Predicts the Median Every Single Time
+```{r}
+mean(abs(test_data2$track.popularity - 59.11364))
+
+```
+The model that preformed the best was the LASSO regression model out of all the models. However, if a model predicts the mean of track popularity every single time, it preforms just barely worse than the LASSO regression model.
+
+# Discussion
+
+### Conclusion
+After reviewing the test mean absolute error it is clear that it is extremely difficult to predict a tracks popularity based on the given variables in this data set. Each of the models preforms very similarly to a model that predicts the mean of track popularity every single time. Even though the models do not work at predicting popularity effectively there are still interesting conclusions that we can draw from the data. <br> <br>
+
+Since these variables do not predict a songs popularity, it is shown that there is no effective formula for making a "popular" song based on these measures. A songs danceability, energy, loudness, speechiness, instrumentalness, liveness, duration, or key will not determine whether the song becomes popular or not.
+
+The models performance being so poor shows that their is a deep complexion in humans music appreciation and how music gains popularity. Even though this statistical analysis was based on just hip-hop songs, I would assume that this is true for all genres of music because the model was very ineffective at predicting the popularity of a song.
+
+### Future Research
+If I were to continue researching what makes a track popular, I would take a completely different approach to what variables effect the popularity of a song. Some potential topics that I would like to explore further are:
+<ul>
+<li>How the amount of money spent on marketing correlates with a songs popularity</li>
+<li> How a songs lyrics(or no use of lyrics) correlate with a songs popularity using natural language processing to rate the topics of the lyrics within the song</li>
+<li>How gender and race of an artist correlate with a songs popularity</li>
+</ul>
+
+# References
+
+Charlie, Rcharlie web site. Available at https://www.rcharlie.com//, 2019.<br><br>
+
+J Appl Stat. 2022; 49(1): 214–229. Published online 2020 Aug 10. doi: 10.1080/02664763.2020.1803810 <br><br>
+
+24. SpotifyWebAPI , Spotify for developers, 2019. Available at https://open.spotify.com/.
+
+
